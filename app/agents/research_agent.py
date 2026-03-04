@@ -20,7 +20,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from enum import Enum, auto
 from typing import Any
 
@@ -154,38 +154,41 @@ def _score_paper(text: str) -> tuple[str | None, int]:
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
+from datetime import datetime, timedelta, UTC
 
-async def _fetch_arxiv(max_results: int = 3) -> list[Paper]:
-    """Fetch recent papers from ArXiv. Returns list for easy mocking in tests."""
-    queries = [
-        "artificial intelligence healthcare medical imaging Africa",
-        "machine learning precision agriculture crop yield",
-        "AI fraud detection banking financial NLP",
-        "large language models education adaptive learning low-resource",
+async def _fetch_arxiv(max_results: int = 5) -> list[Paper]:
+    """Fetch papers from ArXiv submitted in the last 7 days."""
+    # Date range: last 7 days
+    now = datetime.now(UTC)
+    week_ago = now - timedelta(days=7)
+    date_filter = (
+        f"submittedDate:[{week_ago.strftime('%Y%m%d')}0000 "
+        f"TO {now.strftime('%Y%m%d')}2359]"
+    )
 
-    ]
     queries = [
-        # Healthcare — very specific
+        # Healthcare
         "AI medical diagnosis clinical deep learning hospital patient",
         "machine learning radiology pathology disease detection treatment",
-        # Agriculture — very specific  
+        # Agriculture
         "AI precision agriculture crop disease yield prediction satellite farm",
         "machine learning soil irrigation livestock food security Africa",
-        # Banking/Finance — very specific
+        # Banking/Finance
         "AI fraud detection credit scoring fintech mobile money banking Africa",
         "machine learning risk assessment loan default payment financial inclusion",
-        # Education — very specific
+        # Education
         "AI adaptive learning education low-resource language NLP Africa",
         "machine learning student performance tutoring curriculum edtech",
-
+        # AI Research (fallback)
         "bias detection bias mitigation bias tracing",
-        "ai security ai risk management privacy guardrails"
+        "ai security ai risk management privacy guardrails",
     ]
+
     papers: list[Paper] = []
     for query in queries:
         try:
             search = arxiv.Search(
-                query=query,
+                query=f"({query}) AND {date_filter}",
                 max_results=max_results,
                 sort_by=arxiv.SortCriterion.SubmittedDate,
             )
@@ -200,9 +203,10 @@ async def _fetch_arxiv(max_results: int = 3) -> list[Paper]:
                     )
                 )
         except Exception as exc:
-            logger.warning("[Research Agent] ArXiv query failed for '%s': %s", query, exc)
+            logger.warning(
+                "[Research Agent] ArXiv query failed for '%s': %s", query, exc
+            )
     return papers
-
 
 async def _fetch_huggingface() -> list[Paper]:
     """Fetch daily papers from HuggingFace. Returns list for easy mocking in tests."""
