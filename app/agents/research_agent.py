@@ -137,19 +137,6 @@ SECTOR_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-def _score_paper2(text: str) -> tuple[str | None, int]:
-    """Return (best_sector, score). Score 0 means not relevant."""
-    t = text.lower()
-    scores = {
-        sector: sum(1 for kw in kws if kw in t)
-        for sector, kws in SECTOR_KEYWORDS.items()
-    }
-    best = max(scores, key=scores.get)  # type: ignore
-    # AI Research needs score >= 2 to avoid noise (large keyword list)
-    # All other sectors pass at >= 1
-    min_score = 2 if best == "AI Research" else 1
-    return (best, scores[best]) if scores[best] >= min_score else (None, 0)
-
 def _score_paper(text: str) -> tuple[str | None, int]:
     t = text.lower()
     scores = {
@@ -157,8 +144,13 @@ def _score_paper(text: str) -> tuple[str | None, int]:
         for sector, kws in SECTOR_KEYWORDS.items()
     }
     best = max(scores, key=scores.get)  # type: ignore
-    # Require score >= 2 for ALL sectors to avoid weak matches
-    return (best, scores[best]) if scores[best] >= 2 else (None, 0)
+    score = scores[best]
+
+    if best == "AI Research":
+        return (best, score) if score >= 1 else (None, 0)
+    else:
+        # Core sectors need stronger signal to avoid false positives
+        return (best, score) if score >= 2 else (None, 0)
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
@@ -170,6 +162,22 @@ async def _fetch_arxiv(max_results: int = 3) -> list[Paper]:
         "machine learning precision agriculture crop yield",
         "AI fraud detection banking financial NLP",
         "large language models education adaptive learning low-resource",
+
+    ]
+    queries = [
+        # Healthcare — very specific
+        "AI medical diagnosis clinical deep learning hospital patient",
+        "machine learning radiology pathology disease detection treatment",
+        # Agriculture — very specific  
+        "AI precision agriculture crop disease yield prediction satellite farm",
+        "machine learning soil irrigation livestock food security Africa",
+        # Banking/Finance — very specific
+        "AI fraud detection credit scoring fintech mobile money banking Africa",
+        "machine learning risk assessment loan default payment financial inclusion",
+        # Education — very specific
+        "AI adaptive learning education low-resource language NLP Africa",
+        "machine learning student performance tutoring curriculum edtech",
+
         "bias detection bias mitigation bias tracing",
         "ai security ai risk management privacy guardrails"
     ]
