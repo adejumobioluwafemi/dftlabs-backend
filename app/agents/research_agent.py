@@ -137,7 +137,7 @@ SECTOR_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-def _score_paper(text: str) -> tuple[str | None, int]:
+def _score_paper2(text: str) -> tuple[str | None, int]:
     """Return (best_sector, score). Score 0 means not relevant."""
     t = text.lower()
     scores = {
@@ -149,6 +149,16 @@ def _score_paper(text: str) -> tuple[str | None, int]:
     # All other sectors pass at >= 1
     min_score = 2 if best == "AI Research" else 1
     return (best, scores[best]) if scores[best] >= min_score else (None, 0)
+
+def _score_paper(text: str) -> tuple[str | None, int]:
+    t = text.lower()
+    scores = {
+        sector: sum(1 for kw in kws if kw in t)
+        for sector, kws in SECTOR_KEYWORDS.items()
+    }
+    best = max(scores, key=scores.get)  # type: ignore
+    # Require score >= 2 for ALL sectors to avoid weak matches
+    return (best, scores[best]) if scores[best] >= 2 else (None, 0)
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
@@ -265,14 +275,37 @@ def _action_think(state: AgentState) -> None:
     state.thoughts.append(thought)
     logger.info("[Research Agent] %s", thought)
 
-    seen = set()
-    unique = []
+    # Deduplicate by URL
+    seen: set[str] = set()
+    unique: list[Paper] = []
     for p in state.papers_filtered:
         if p.url not in seen:
             seen.add(p.url)
             unique.append(p)
-    ranked = sorted(unique, key=lambda p: p.relevance_score, reverse=True)
-    state.papers_selected = ranked[:4]
+
+    # Prefer core sectors — AI Research only fills remaining slots
+    CORE_SECTORS = {"Healthcare", "Agriculture", "Banking", "Education"}
+    MAX_PER_RUN = 4
+    MAX_AI_RESEARCH = 1  # at most 1 pure AI Research paper per run
+
+    core = sorted(
+        [p for p in unique if p.sector in CORE_SECTORS],
+        key=lambda p: p.relevance_score,
+        reverse=True,
+    )
+    ai_research = sorted(
+        [p for p in unique if p.sector == "AI Research"],
+        key=lambda p: p.relevance_score,
+        reverse=True,
+    )
+
+    # Fill up to MAX_PER_RUN: core papers first, then AI Research to fill gaps
+    selected = core[:MAX_PER_RUN]
+    remaining = MAX_PER_RUN - len(selected)
+    if remaining > 0:
+        selected += ai_research[:min(remaining, MAX_AI_RESEARCH)]
+
+    state.papers_selected = selected
 
     obs = (
         f"Selected {len(state.papers_selected)} papers: "
@@ -340,33 +373,37 @@ DFT Labs Take rules:
     # Strategy: replace all control chars EXCEPT where they are JSON structural
     # The safest fix: replace literal newlines inside string values with \n
     def _fix_json_strings(s: str) -> str:
-        """Escape literal newlines/tabs inside JSON string values."""
-        result = []
-        in_string = False
-        escape_next = False
-        for ch in s:
-            if escape_next:
-                result.append(ch)
-                escape_next = False
-            elif ch == '\\' and in_string:
-                result.append(ch)
-                escape_next = True
-            elif ch == '"':
-                result.append(ch)
-                in_string = not in_string
-            elif in_string and ch == '\n':
-                result.append('\\n')
-            elif in_string and ch == '\r':
-                result.append('\\r')
-            elif in_string and ch == '\t':
-                result.append('\\t')
-            elif in_string and ord(ch) < 0x20:
-                # Any other control character — replace with space
-                result.append(' ')
-            else:
-                result.append(ch)
-        return ''.join(result)
-
+            result = []
+            in_string = False
+            escape_next = False
+            for ch in s:
+                if escape_next:
+                    # Valid JSON escape chars: " \ / b f n r t u
+                    if ch in ('"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'):
+                        result.append(ch)
+                    else:
+                        # Invalid escape (e.g. \m \c \e from LaTeX) — drop backslash
+                        result.pop()
+                        result.append(ch)
+                    escape_next = False
+                elif ch == '\\' and in_string:
+                    result.append(ch)
+                    escape_next = True
+                elif ch == '"':
+                    result.append(ch)
+                    in_string = not in_string
+                elif in_string and ch == '\n':
+                    result.append('\\n')
+                elif in_string and ch == '\r':
+                    result.append('\\r')
+                elif in_string and ch == '\t':
+                    result.append('\\t')
+                elif in_string and ord(ch) < 0x20:
+                    result.append(' ')
+                else:
+                    result.append(ch)
+            return ''.join(result)
+    
     clean = _fix_json_strings(clean)
     return json.loads(clean)
 
