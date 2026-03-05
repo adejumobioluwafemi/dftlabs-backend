@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     # App
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
-    FRONTEND_URL: str = "https://deepflytechlabs.com"
+    FRONTEND_URL: str = "https://www.deepflytechlabs.com"
 
     # Database
     DATABASE_URL: str
