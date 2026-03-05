@@ -1,3 +1,5 @@
+# app/routers/blog.py
+
 import logging
 from datetime import datetime, UTC
 from typing import Annotated
@@ -120,9 +122,9 @@ async def update_post(
         setattr(post, field_name, value)
 
     if updates.status == "published" and not post.published_at:
-        post.published_at = datetime.now(UTC)
+        post.published_at = datetime.now(UTC).replace(tzinfo=None)
 
-    post.updated_at = datetime.now(UTC)
+    post.updated_at = datetime.now(UTC).replace(tzinfo=None)
     db.add(post)
     await db.flush()
     await db.refresh(post)
