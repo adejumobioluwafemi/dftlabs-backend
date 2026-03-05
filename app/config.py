@@ -55,10 +55,15 @@ class Settings(BaseSettings):
 
     @property
     def allowed_origins(self) -> list[str]:
-        base = [self.FRONTEND_URL, "http://localhost:5173"]
+        base = [
+            self.FRONTEND_URL,
+            "https://deepflytechlabs.com",
+            "https://www.deepflytechlabs.com",
+            "http://localhost:5173",
+        ]
         if not self.is_production:
             base += ["http://localhost:3000", "http://127.0.0.1:5173"]
-        return base
+        return list(dict.fromkeys(base))  # deduplicate
 
     @property
     def has_llm(self) -> bool:
