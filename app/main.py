@@ -1,3 +1,4 @@
+# app/main.py
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from app.config import settings
 from app.core.logging import setup_logging
 from app.core.scheduler import shutdown_scheduler, start_scheduler
 from app.database import create_db_and_tables
-from app.routers import admin, blog, events, jobs, registrations
+from app.routers import admin, blog, events, jobs, registrations, products
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -55,11 +56,11 @@ for _router in [
     jobs.router,
     events.router,
     registrations.router,
+    products.router,
 ]:
     app.include_router(_router)
 
-
-# ── Health (used by UptimeRobot to keep Render awake) ────────────────────────
+# ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/health", tags=["Meta"])
 async def health() -> dict:
     return {
